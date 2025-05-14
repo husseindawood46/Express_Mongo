@@ -1,0 +1,7 @@
+Nosql  => language ==> mql
+mongoDB store data (BSON) = زي ال json بس دس binary
+cashing => Redis
+in mongo db the protocol name => mongodb
+//  Note.find({}).populate  ('user', 'name email')// to get the user details of the note
+// token return in headers , is function 
+ex  const token  =req.header('token')
