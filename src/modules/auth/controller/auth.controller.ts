@@ -1,13 +1,31 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import User from '../model/auth.model';
 import bcrypt from 'bcrypt';
 import { AppError } from '../../../middleware/app.error';
 import { catchError } from '../../../middleware/catch.error';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import { transporter } from '../../../middleware/email';
 dotenv.config();
 export const signup = catchError(async (req: Request, res: Response) => {
   const { username, password, email } = req.body;
+  const JWT_SECRET = process.env.JWT_SECRET || 'your_fallback_secret';
+  const email_token = jwt.sign({ email }, JWT_SECRET);
+  const link =
+    process.env.BASE_URL + `/api/v1/auth/confirmEmail/${email_token}`;
+  const htmlContent = `
+  <h1>Welcome to Our App!</h1>
+  <p>Hi, this is a test email sent from our Express app.</p>
+  <p>Thank you for using our service!</p>
+  <a href="${link}">Visit our website</a>
+`;
+  await transporter.sendMail({
+    from: process.env.EMAIL_NAME,
+    to: email,
+    subject: 'email confirmation ',
+    text: 'This is a test email sent from our Express app.',
+    html: htmlContent,
+  });
   const salt = parseInt(process.env.SALT || '10');
   const hashPassword = await bcrypt.hashSync(password, salt);
   const user = await User.create({ username, password: hashPassword, email });
@@ -66,3 +84,44 @@ export const signin = catchError(
   }
 );
 
+export const confirmEmail = catchError(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { token } = req.params;
+    if (!token) {
+      return next(new AppError('Email is required', 400));
+    }
+    try {
+      const JWT_SECRET = process.env.JWT_SECRET || 'your_fallback_secret';
+      const decoded = jwt.verify(token, JWT_SECRET);
+
+      let email: string | undefined;
+      if (
+        typeof decoded === 'object' &&
+        decoded !== null &&
+        'email' in decoded
+      ) {
+        email = (decoded as any).email;
+      }
+
+      if (!email) {
+        throw new AppError('Invalid or expired token', 400);
+      }
+
+      console.log('Decoded email:', email);
+      const updatedUser = await User.findOneAndUpdate(
+        { email },
+        { isVerified: true },
+        { new: true }
+      );
+      console.log('Updated user:', updatedUser);
+
+      if (!updatedUser) {
+        throw new AppError('User not found', 404);
+      }
+
+      return res.status(200).send('email verified successfuly');
+    } catch (error: any) {
+      throw new AppError(error.message, 400);
+    }
+  }
+);
